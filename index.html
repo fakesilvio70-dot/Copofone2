@@ -21,7 +21,7 @@
         .input-area { display: flex; gap: 8px; margin-top: 16px; }
         .input-area input { flex: 1; padding: 12px; border-radius: 28px; background: #0f0f1a; color: white; border: none; }
         .input-area button { padding: 12px 20px; border-radius: 28px; background: #00b894; color: white; border: none; font-weight: bold; }
-        .btn { padding: 14px; border-radius: 28px; font-weight: bold; border: none; width: 100%; margin-bottom: 12px; }
+        .btn { padding: 14px; border-radius: 28px; font-weight: bold; border: none; width: 100%; margin-bottom: 12px; cursor: pointer; }
         .btn-criar { background: #00b894; color: white; }
         .btn-conectar { background: transparent; border: 2px solid #00b894; color: #00b894; }
         .hidden { display: none; }
@@ -33,11 +33,12 @@
             margin-top: 16px;
         }
         .sala-numero {
-            font-size: 32px;
-            letter-spacing: 4px;
+            font-size: 28px;
+            letter-spacing: 2px;
             font-weight: bold;
             color: #00b894;
             margin: 12px 0;
+            font-family: monospace;
         }
         .footer { text-align: center; font-size: 10px; color: #444; margin-top: 16px; }
         input.codigo-input {
@@ -52,12 +53,13 @@
             letter-spacing: 2px;
             margin-top: 12px;
         }
+        button:active { transform: scale(0.97); }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>🥤 Telefone de Copo</h1>
-    <div class="sub">Código de 6 letras · Sem servidor</div>
+    <div class="sub">Código de 4 números · Sem servidor</div>
 
     <div class="status" id="status">⚪ Desconectado</div>
 
@@ -68,7 +70,7 @@
     <div id="telaInicial">
         <button class="btn btn-criar" id="criarSalaBtn">🏠 Criar Sala</button>
         <div style="margin: 16px 0; text-align: center; color: #666;">ou</div>
-        <input type="text" id="codigoEntrada" class="codigo-input" placeholder="Digite o código de 6 letras" maxlength="6">
+        <input type="text" id="codigoEntrada" class="codigo-input" placeholder="Digite o código de 4 números" maxlength="4">
         <button class="btn btn-conectar" id="entrarSalaBtn" style="margin-top: 12px;">🔑 Entrar na Sala</button>
     </div>
 
@@ -88,17 +90,21 @@
         <button id="sendBtn">📤</button>
     </div>
 
-    <div class="footer">🔒 Conexão direta | Código curto | Sem servidor de dados</div>
+    <div class="footer">🔒 Conexão direta | Código curto | P2P</div>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
-// Telefone de Copo - Com código curto de 6 letras
+// ============================================
+// TELEFONE DE COPO - VERSÃO SIMPLES E FUNCIONAL
+// Usa WebRTC direto com código curto
+// ============================================
 
-let peer = null;
-let conn = null;
-let salaId = null;
+let localPeer = null;
+let remotePeer = null;
+let dataChannel = null;
 let conectado = false;
+let salaId = null;
+let connectionInProgress = false;
 
 const statusDiv = document.getElementById('status');
 const msgsDiv = document.getElementById('msgs');
@@ -134,12 +140,20 @@ function setStatus(texto, ok = false) {
 }
 
 function resetar() {
-    if (conn) conn.close();
-    if (peer) peer.destroy();
-    peer = null;
-    conn = null;
+    if (dataChannel) {
+        try { dataChannel.close(); } catch(e) {}
+        dataChannel = null;
+    }
+    if (localPeer) {
+        try { localPeer.close(); } catch(e) {}
+        localPeer = null;
+    }
+    if (remotePeer) {
+        try { remotePeer.close(); } catch(e) {}
+        remotePeer = null;
+    }
     conectado = false;
-    salaId = null;
+    connectionInProgress = false;
     setStatus('⚪ Desconectado');
     inputArea.classList.add('hidden');
     telaInicial.classList.remove('hidden');
@@ -147,81 +161,169 @@ function resetar() {
     msgsDiv.innerHTML = '<div style="text-align:center;color:#555;padding:40px;">Clique em "Criar Sala"</div>';
 }
 
-function setupConnection() {
-    conn.on('open', () => {
-        conectado = true;
-        setStatus('🔗 CONECTADO!', true);
-        inputArea.classList.remove('hidden');
-        telaSala.classList.add('hidden');
-        telaInicial.classList.add('hidden');
-        msgInput.focus();
-        addMsg('🔗 Conexão estabelecida!', 'rec');
-    });
-    conn.on('data', (data) => addMsg(data, 'rec'));
-    conn.on('close', () => {
-        if (conectado) addMsg('🔌 Conexão encerrada', 'rec');
-        resetar();
-    });
+// Gerar código aleatório de 4 números
+function gerarCodigo() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-function criarSala() {
+// Criar sala (host)
+async function criarSala() {
     resetar();
     setStatus('🔄 Criando sala...');
     
-    peer = new Peer();
-    peer.on('open', (id) => {
-        salaId = id.substring(0, 6);
-        salaCodigoDiv.textContent = salaId;
-        telaInicial.classList.add('hidden');
-        telaSala.classList.remove('hidden');
-        setStatus('📱 Aguardando alguém entrar');
-        
-        peer.on('connection', (connection) => {
-            conn = connection;
-            aguardandoMsg.innerHTML = '✅ Alguém entrou! Conectando...';
-            setupConnection();
+    salaId = gerarCodigo();
+    salaCodigoDiv.textContent = salaId;
+    telaInicial.classList.add('hidden');
+    telaSala.classList.remove('hidden');
+    setStatus('📱 Aguardando alguém entrar');
+    aguardandoMsg.innerHTML = '⏳ Aguardando alguém entrar...<br><small>Código: ' + salaId + '</small>';
+    
+    // Cria a conexão WebRTC (host)
+    try {
+        localPeer = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
-    });
-    peer.on('error', (err) => {
+        
+        dataChannel = localPeer.createDataChannel('chat');
+        dataChannel.onopen = () => {
+            conectado = true;
+            setStatus('🔗 CONECTADO!', true);
+            inputArea.classList.remove('hidden');
+            telaSala.classList.add('hidden');
+            msgInput.focus();
+            addMsg('🔗 Conexão estabelecida!', 'rec');
+        };
+        dataChannel.onclose = () => {
+            if (conectado) addMsg('🔌 Conexão encerrada', 'rec');
+            resetar();
+        };
+        dataChannel.onmessage = (e) => addMsg(e.data, 'rec');
+        
+        const offer = await localPeer.createOffer();
+        await localPeer.setLocalDescription(offer);
+        
+        // Salva a oferta em localStorage (para o cliente ler)
+        localStorage.setItem('sala_' + salaId, JSON.stringify({
+            sdp: offer.sdp,
+            type: 'offer'
+        }));
+        
+        // Aguarda resposta
+        checkForAnswer();
+        
+    } catch(err) {
         console.error(err);
         setStatus('❌ Erro ao criar sala');
         setTimeout(resetar, 2000);
-    });
+    }
 }
 
-function entrarSala() {
-    const codigo = codigoEntrada.value.trim().toUpperCase();
-    if (!codigo || codigo.length < 4) {
-        alert('Digite o código de 6 letras');
+// Verificar se o cliente já respondeu
+function checkForAnswer() {
+    const interval = setInterval(() => {
+        if (!salaId) {
+            clearInterval(interval);
+            return;
+        }
+        const resposta = localStorage.getItem('resposta_' + salaId);
+        if (resposta && !connectionInProgress) {
+            clearInterval(interval);
+            aplicarResposta(JSON.parse(resposta));
+        }
+    }, 1000);
+}
+
+async function aplicarResposta(resposta) {
+    connectionInProgress = true;
+    try {
+        await localPeer.setRemoteDescription({
+            type: 'answer',
+            sdp: resposta.sdp
+        });
+        localStorage.removeItem('resposta_' + salaId);
+        setStatus('🔄 Conectando...');
+    } catch(err) {
+        console.error(err);
+        setStatus('❌ Falha na conexão');
+        setTimeout(resetar, 2000);
+    }
+}
+
+// Entrar na sala (cliente)
+async function entrarSala() {
+    const codigo = codigoEntrada.value.trim();
+    if (!codigo || codigo.length !== 4) {
+        alert('Digite o código de 4 números');
         return;
     }
     
     resetar();
-    setStatus('🔄 Entrando na sala...');
+    setStatus('🔄 Entrando na sala ' + codigo + '...');
     
-    peer = new Peer();
-    peer.on('open', () => {
-        conn = peer.connect(codigo);
-        setupConnection();
-        telaInicial.classList.add('hidden');
-        telaSala.classList.remove('hidden');
-        aguardandoMsg.innerHTML = '⏳ Conectando à sala...';
-    });
-    peer.on('error', (err) => {
-        console.error(err);
+    // Recupera a oferta do host
+    const ofertaData = localStorage.getItem('sala_' + codigo);
+    if (!ofertaData) {
         setStatus('❌ Sala não encontrada');
         setTimeout(resetar, 2000);
-    });
+        return;
+    }
+    
+    const oferta = JSON.parse(ofertaData);
+    
+    try {
+        remotePeer = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        
+        remotePeer.ondatachannel = (event) => {
+            dataChannel = event.channel;
+            dataChannel.onopen = () => {
+                conectado = true;
+                setStatus('🔗 CONECTADO!', true);
+                inputArea.classList.remove('hidden');
+                telaSala.classList.add('hidden');
+                telaInicial.classList.add('hidden');
+                msgInput.focus();
+                addMsg('🔗 Conexão estabelecida!', 'rec');
+            };
+            dataChannel.onclose = () => {
+                if (conectado) addMsg('🔌 Conexão encerrada', 'rec');
+                resetar();
+            };
+            dataChannel.onmessage = (e) => addMsg(e.data, 'rec');
+        };
+        
+        await remotePeer.setRemoteDescription({
+            type: 'offer',
+            sdp: oferta.sdp
+        });
+        
+        const answer = await remotePeer.createAnswer();
+        await remotePeer.setLocalDescription(answer);
+        
+        // Salva a resposta para o host
+        localStorage.setItem('resposta_' + codigo, JSON.stringify({
+            sdp: answer.sdp,
+            type: 'answer'
+        }));
+        
+        setStatus('📤 Conectando...');
+        
+    } catch(err) {
+        console.error(err);
+        setStatus('❌ Erro ao conectar');
+        setTimeout(resetar, 2000);
+    }
 }
 
 function enviar() {
-    if (!conn || !conectado) {
+    if (!dataChannel || dataChannel.readyState !== 'open') {
         addMsg('⚠️ Sem conexão', 'rec');
         return;
     }
     const texto = msgInput.value.trim();
     if (!texto) return;
-    conn.send(texto);
+    dataChannel.send(texto);
     addMsg(texto, 'env');
     msgInput.value = '';
 }
