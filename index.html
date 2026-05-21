@@ -1,18 +1,18 @@
-<!DOCTYPE html>
+        <!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telefone de Copo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Telefone de Copo - QR</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: system-ui; background: #0f0f1a; padding: 16px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
         .container { max-width: 500px; width: 100%; background: #1a1a2e; border-radius: 32px; padding: 20px; }
-        h1 { text-align: center; color: #00b894; margin-bottom: 8px; }
+        h1 { text-align: center; color: #00b894; }
         .sub { text-align: center; font-size: 12px; color: #666; margin-bottom: 20px; }
-        .status { background: #0f0f1a; padding: 12px; border-radius: 24px; text-align: center; color: #888; margin-bottom: 16px; }
+        .status { background: #0f0f1a; padding: 12px; border-radius: 24px; text-align: center; color: #888; margin-bottom: 16px; font-weight: bold; }
         .status.ok { background: #00b89420; color: #00b894; }
-        .msgs { background: #0f0f1a; border-radius: 20px; height: 300px; overflow-y: auto; padding: 12px; margin-bottom: 16px; }
+        .msgs { background: #0f0f1a; border-radius: 20px; height: 280px; overflow-y: auto; padding: 12px; margin-bottom: 16px; }
         .msg { margin-bottom: 8px; display: flex; }
         .msg.env { justify-content: flex-end; }
         .msg.rec { justify-content: flex-start; }
@@ -26,15 +26,23 @@
         .btn-criar { background: #00b894; color: white; }
         .btn-conectar { background: transparent; border: 2px solid #00b894; color: #00b894; }
         .hidden { display: none; }
-        textarea { width: 100%; padding: 12px; border-radius: 16px; background: #0f0f1a; color: white; border: none; margin: 12px 0; font-size: 10px; }
-        .codigo-box { background: #0f0f1a; padding: 12px; border-radius: 16px; margin-top: 16px; }
+        .qr-area { text-align: center; margin-top: 16px; padding: 20px; background: white; border-radius: 20px; }
+        .qr-code { display: flex; justify-content: center; margin: 16px 0; }
+        canvas { background: white; padding: 10px; border-radius: 16px; }
         .footer { text-align: center; font-size: 10px; color: #444; margin-top: 16px; }
+        .leitor { text-align: center; margin-top: 16px; }
+        #reader { width: 100%; margin-top: 16px; }
+        #reader video { width: 100%; border-radius: 20px; }
+        button:active { transform: scale(0.97); }
+        .codigo-texto { background: #2d2d44; padding: 12px; border-radius: 12px; font-size: 9px; word-break: break-all; margin-top: 8px; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 <div class="container">
     <h1>🥤 Telefone de Copo</h1>
-    <div class="sub">P2P direto | Sem servidor</div>
+    <div class="sub">Aponte a câmera para o QR Code</div>
 
     <div class="status" id="status">⚪ Desconectado</div>
 
@@ -44,22 +52,34 @@
 
     <div class="botoes" id="botoes">
         <button class="btn btn-criar" id="criarBtn">🥤 Criar Linha</button>
-        <button class="btn btn-conectar" id="conectarBtn">📷 Conectar</button>
+        <button class="btn btn-conectar" id="escanearBtn">📷 Escanear QR</button>
     </div>
 
-    <div id="areaCodigo" class="hidden">
-        <div class="codigo-box">
-            <strong>📋 Envie para seu amigo:</strong>
-            <div id="codigoTexto" style="background:#2d2d44; padding:12px; border-radius:12px; margin-top:8px; word-break:break-all; font-size:10px;"></div>
-            <button id="btnCopiar" style="margin-top:8px; padding:8px; background:#00b894; color:white; border:none; border-radius:12px;">📋 Copiar</button>
+    <div id="qrContainer" class="hidden">
+        <hr>
+        <div class="qr-area">
+            <strong>📱 Seu amigo deve escanear este QR Code</strong>
+            <div id="qrCode" class="qr-code"></div>
+            <button id="voltarBtn" class="btn btn-conectar" style="margin-top:16px;">◀ Voltar</button>
         </div>
     </div>
 
-    <div id="areaResposta" class="hidden">
-        <div class="codigo-box">
-            <strong>📝 Cole a resposta do seu amigo:</strong>
-            <textarea id="respostaInput" rows="3" placeholder="Cole aqui..."></textarea>
-            <button id="finalizarBtn" class="btn btn-criar" style="margin-top:8px;">🔗 Conectar</button>
+    <div id="leitorContainer" class="hidden">
+        <hr>
+        <div class="qr-area">
+            <strong>📷 Aponte para o QR Code do seu amigo</strong>
+            <div id="reader"></div>
+            <button id="fecharLeitorBtn" class="btn btn-conectar" style="margin-top:16px;">❌ Fechar</button>
+        </div>
+    </div>
+
+    <div id="aguardandoContainer" class="hidden">
+        <hr>
+        <div class="qr-area">
+            <strong>⏳ Aguardando resposta do amigo</strong>
+            <div id="respostaCode" class="codigo-texto"></div>
+            <button id="copiarRespostaBtn" class="btn btn-criar" style="margin-top:12px;">📋 Copiar resposta</button>
+            <button id="cancelarBtn" class="btn btn-conectar" style="margin-top:8px;">◀ Cancelar</button>
         </div>
     </div>
 
@@ -68,12 +88,14 @@
         <button id="sendBtn">📤</button>
     </div>
 
-    <div class="footer">🔒 Conexão direta | Sem histórico</div>
+    <div class="footer">🔒 Conexão direta | QR Code | Sem servidor</div>
 </div>
 
 <script>
 const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 let peer = null, canal = null, conectado = false;
+let html5QrCode = null;
+let sdpOfertaAtual = null;
 
 const statusDiv = document.getElementById('status');
 const msgsDiv = document.getElementById('msgs');
@@ -82,13 +104,16 @@ const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
 const botoes = document.getElementById('botoes');
 const criarBtn = document.getElementById('criarBtn');
-const conectarBtn = document.getElementById('conectarBtn');
-const areaCodigo = document.getElementById('areaCodigo');
-const codigoTexto = document.getElementById('codigoTexto');
-const areaResposta = document.getElementById('areaResposta');
-const respostaInput = document.getElementById('respostaInput');
-const finalizarBtn = document.getElementById('finalizarBtn');
-const btnCopiar = document.getElementById('btnCopiar');
+const escanearBtn = document.getElementById('escanearBtn');
+const qrContainer = document.getElementById('qrContainer');
+const qrCodeDiv = document.getElementById('qrCode');
+const leitorContainer = document.getElementById('leitorContainer');
+const aguardandoContainer = document.getElementById('aguardandoContainer');
+const respostaCode = document.getElementById('respostaCode');
+const copiarRespostaBtn = document.getElementById('copiarRespostaBtn');
+const voltarBtn = document.getElementById('voltarBtn');
+const fecharLeitorBtn = document.getElementById('fecharLeitorBtn');
+const cancelarBtn = document.getElementById('cancelarBtn');
 
 function addMsg(texto, tipo) {
     const p = msgsDiv.querySelector('div[style*="text-align: center"]');
@@ -112,11 +137,13 @@ function setStatus(texto, ok = false) {
 function resetar() {
     if (peer) peer.close();
     if (canal) canal.close();
+    if (html5QrCode) { html5QrCode.stop().catch(()=>{}); html5QrCode = null; }
     peer = null; canal = null; conectado = false;
     setStatus('⚪ Desconectado');
     inputArea.classList.add('hidden');
-    areaCodigo.classList.add('hidden');
-    areaResposta.classList.add('hidden');
+    qrContainer.classList.add('hidden');
+    leitorContainer.classList.add('hidden');
+    aguardandoContainer.classList.add('hidden');
     botoes.classList.remove('hidden');
     msgsDiv.innerHTML = '<div style="text-align:center;color:#555;padding:40px;">Clique em "Criar Linha"</div>';
 }
@@ -127,51 +154,55 @@ async function criarLinha() {
     try {
         peer = new RTCPeerConnection(config);
         canal = peer.createDataChannel('chat');
-        canal.onopen = () => { conectado = true; setStatus('🔗 CONECTADO!', true); inputArea.classList.remove('hidden'); areaCodigo.classList.add('hidden'); areaResposta.classList.add('hidden'); botoes.classList.add('hidden'); msgInput.focus(); };
+        canal.onopen = () => { conectado = true; setStatus('🔗 CONECTADO!', true); inputArea.classList.remove('hidden'); qrContainer.classList.add('hidden'); aguardandoContainer.classList.add('hidden'); botoes.classList.add('hidden'); msgInput.focus(); };
         canal.onclose = () => { if (conectado) addMsg('🔌 Desconectado', 'rec'); resetar(); };
         canal.onmessage = (e) => addMsg(e.data, 'rec');
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
         await new Promise(r => { if (peer.iceGatheringState === 'complete') r(); else peer.onicegatheringstatechange = () => { if (peer.iceGatheringState === 'complete') r(); }; });
-        codigoTexto.textContent = peer.localDescription.sdp;
-        setStatus('📱 Envie o código');
-        areaCodigo.classList.remove('hidden');
-        areaResposta.classList.remove('hidden');
+        sdpOfertaAtual = peer.localDescription.sdp;
+        qrCodeDiv.innerHTML = '';
+        new QRCode(qrCodeDiv, { text: sdpOfertaAtual, width: 220, height: 220 });
+        setStatus('📱 Mostre o QR Code para seu amigo');
+        qrContainer.classList.remove('hidden');
+        aguardandoContainer.classList.remove('hidden');
         botoes.classList.add('hidden');
-        respostaInput.value = '';
+        respostaCode.textContent = '';
     } catch(err) { setStatus('❌ Erro'); setTimeout(resetar, 2000); }
 }
 
-async function finalizar() {
-    const resposta = respostaInput.value.trim();
-    if (!resposta) return alert('Cole a resposta');
-    setStatus('🔄 Conectando...');
-    try { await peer.setRemoteDescription({ type: 'answer', sdp: resposta }); }
-    catch(err) { setStatus('❌ Falha'); setTimeout(resetar, 2000); }
+async function iniciarLeitor() {
+    resetar();
+    leitorContainer.classList.remove('hidden');
+    botoes.classList.add('hidden');
+    setStatus('📷 Aponte para o QR Code');
+    try {
+        html5QrCode = new Html5Qrcode("reader");
+        await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onQRSuccess, ()=>{});
+    } catch(err) { setStatus('❌ Erro câmera'); setTimeout(resetar, 2000); }
 }
 
-async function conectarCliente(sdpOferta) {
-    resetar();
+async function onQRSuccess(decodedText) {
+    if (html5QrCode) { await html5QrCode.stop(); html5QrCode = null; }
+    leitorContainer.classList.add('hidden');
     setStatus('🔄 Conectando...');
     try {
         peer = new RTCPeerConnection(config);
         peer.ondatachannel = (event) => {
             canal = event.channel;
-            canal.onopen = () => { conectado = true; setStatus('🔗 CONECTADO!', true); inputArea.classList.remove('hidden'); areaCodigo.classList.add('hidden'); areaResposta.classList.add('hidden'); botoes.classList.add('hidden'); msgInput.focus(); };
+            canal.onopen = () => { conectado = true; setStatus('🔗 CONECTADO!', true); inputArea.classList.remove('hidden'); botoes.classList.add('hidden'); msgInput.focus(); };
             canal.onclose = () => { if (conectado) addMsg('🔌 Desconectado', 'rec'); resetar(); };
             canal.onmessage = (e) => addMsg(e.data, 'rec');
         };
-        await peer.setRemoteDescription({ type: 'offer', sdp: sdpOferta });
+        await peer.setRemoteDescription({ type: 'offer', sdp: decodedText });
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
         await new Promise(r => { if (peer.iceGatheringState === 'complete') r(); else peer.onicegatheringstatechange = () => { if (peer.iceGatheringState === 'complete') r(); }; });
-        areaCodigo.classList.add('hidden');
-        areaResposta.classList.remove('hidden');
-        document.querySelector('#areaResposta .codigo-box strong').textContent = '📋 Copie e envie para seu amigo';
-        respostaInput.value = peer.localDescription.sdp;
-        setStatus('📤 Envie a resposta');
+        respostaCode.textContent = peer.localDescription.sdp;
+        setStatus('📤 Envie a resposta para seu amigo');
+        aguardandoContainer.classList.remove('hidden');
         botoes.classList.add('hidden');
-    } catch(err) { setStatus('❌ Erro'); setTimeout(resetar, 2000); }
+    } catch(err) { setStatus('❌ Falha'); setTimeout(resetar, 2000); }
 }
 
 function enviar() {
@@ -181,23 +212,19 @@ function enviar() {
     canal.send(texto);
     addMsg(texto, 'env');
     msgInput.value = '';
-    msgInput.focus();
-}
-
-function conectar() {
-    const codigo = prompt('Cole o código do seu amigo:');
-    if (codigo) conectarCliente(codigo.trim());
 }
 
 criarBtn.onclick = criarLinha;
-conectarBtn.onclick = conectar;
-finalizarBtn.onclick = finalizar;
+escanearBtn.onclick = iniciarLeitor;
 sendBtn.onclick = enviar;
 msgInput.onkeypress = (e) => { if (e.key === 'Enter') enviar(); };
-btnCopiar.onclick = () => {
-    navigator.clipboard.writeText(codigoTexto.textContent);
-    btnCopiar.textContent = '✓ Copiado!';
-    setTimeout(() => { btnCopiar.textContent = '📋 Copiar'; }, 2000);
+voltarBtn.onclick = resetar;
+fecharLeitorBtn.onclick = resetar;
+cancelarBtn.onclick = resetar;
+copiarRespostaBtn.onclick = () => {
+    navigator.clipboard.writeText(respostaCode.textContent);
+    copiarRespostaBtn.textContent = '✓ Copiado!';
+    setTimeout(() => { copiarRespostaBtn.textContent = '📋 Copiar resposta'; }, 2000);
 };
 </script>
 </body>
